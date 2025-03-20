@@ -1,0 +1,879 @@
+c======================================================================c
+
+      subroutine rwave(it,ib,k,r,f,g,imc)
+
+c======================================================================c
+c
+c     calculation of the wavefunctions f(r) and g(r) at point x
+c     x is given in units of the oscillator lenght: x = r/b0f 
+c     it = 1:  neutron,  it = 2: proton
+c     ib is the block charakterized by j,l
+c     k  is the number of the wavefunction within this block
+c
+c----------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+c
+      dimension rnl(nrx,2)
+C
+
+C      common /basnnn/ n0f,n0b
+C      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+C      common /bloosc/ ia(nbx,2),id(nbx,2)
+C      common /bloqua/ nt,nr(ntx),nl(ntx),nj(ntx),kk(ntx),np(ntx),tt(ntx)
+C      common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+C      common /bosqua/ no
+C      common /gfviv / iv(0:igfv)
+C      common /sdimos/ nrm,nlm,nrbm
+C      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+C      common /textex/ tp(2),tis(2),tit(2),tl(0:30)
+C      common /vvvikf/ mv,ipos(nbx),nib(mvx),nni(2,mvx)
+
+
+
+
+
+
+!      common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      
+      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+      common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+      common /dimens/ n0f,n0b,nrm,nlm
+      common /gfvsq / sq(0:igfv)
+      common /gfvsqi/ sqi(0:igfv)
+      common /gfvsqh/ sqh(0:igfv)
+      common /gfvshi/ shi(0:igfv)
+      common /gfvwgi/ wgi(0:igfv)
+      common /mathco/ zero,one,two,half,third,pi
+      common /initia/ vin,rin,ain,inin,iplot
+      common /tapes / l6,lin,lou,lwin,lwou,lplo
+      common /wavefg/ fg(nq2x,nb2x)
+c
+      if (r.eq.zero) r = 0.0000001
+      ibg = ib - 1 + 2*mod(ib,2)
+      nf  = id(ib)
+      ng  = id(ibg)
+      nd  = nf + ng
+      mf  = ib + (it-1)*nbx
+      lf  = ilb(ib)
+      lg  = ilb(ibg)
+C---------------------      
+      k1  = k
+C---------------------      
+c
+      x  = r/b0f
+      xx = x*x
+      f  = b0f**(-1.5d0)
+      rnl(1,1) = sq(2)*f*wgi(lf+1)*x**lf*exp(-half*xx)
+      rnl(2,1) = rnl(1,1)*(lf+1.5d0-xx)*shi(lf+1)
+      rnl(1,2) = sq(2)*f*wgi(lg+1)*x**lg*exp(-half*xx)
+      rnl(2,2) = rnl(1,2)*(lg+1.5d0-xx)*shi(lg+1)
+      do n = 3,nrm
+         rnl(n,1)  = ((2*n+lf-2.5d0-xx)*rnl(n-1,1) -
+     &           sq(n-2)*sqh(n-2+lf)*rnl(n-2,1))*sqi(n-1)*shi(n-1+lf)
+         rnl(n,2)  = ((2*n+lg-2.5d0-xx)*rnl(n-1,2) -
+     &           sq(n-2)*sqh(n-2+lg)*rnl(n-2,2))*sqi(n-1)*shi(n-1+lg)
+      enddo
+c
+      sf = zero
+      sg = zero
+C------------------      
+      snf = zero
+      sng = zero
+C------------------
+      if (imc.eq.0 .and. iplot.eq.1) then 
+      write(l6,*) ' Coeficientes de f(r)'           
+      end if
+      do n = 1,nf
+         sf = sf + fg(n+(k-1)*nd,mf)*rnl(n,1)
+C------------------         
+         snf = snf + fg(n+(k-1)*nd,mf)*fg(n+(k-1)*nd,mf)
+         if (imc.eq.0 .and. iplot.eq.1) then 
+         write(l6,'(f15.6)') fg(n+(k-1)*nd,mf)
+         end if
+C------------------                
+      enddo
+      if (imc.eq.0 .and. iplot.eq.1) then       
+      write(l6,*) ' Coeficientes de g(r)'      
+      end if
+      do n = 1,ng
+         sg = sg + fg(nf+n+(k-1)*nd,mf)*rnl(n,2)
+C------------------         
+cll         sng = sng + fg(nf+n+(k-1)*nd,mf)*rnl(n,2)
+         sng = sng + fg(nf+n+(k-1)*nd,mf)*fg(nf+n+(k-1)*nd,mf)
+         if (imc.eq.0 .and. iplot.eq.1) then 
+         write(l6,'(f15.6)') fg(nf+n+(k-1)*nd,mf)
+         end if
+C------------------                        
+      enddo
+      f = sf
+      g = sg
+C------------------
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C     Coloquei o comentario abaixo para evitar a impressao das normas 
+C     \int f^2 + g^2 na tela 06/98
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+c      write(*,*) 'isospin,n_r,j,norm',it,k1,2*ijb(ib)-1,snf+sng
+         if (imc.eq.0 .and. iplot.eq.1) then 
+      write(l6,*) 'Sum f,Sum g',snf,sng
+         end if
+C------------------     
+c
+      return
+c-end-RWAVE
+      end
+
+c=====================================================================c
+
+      subroutine plotw(it,ib,k,lpr)
+
+c=====================================================================c
+C
+C     prepares plot of specific wafefunctions f(r) and g(r)
+c     it = 1 for neutrons,  it = 2 for protons
+c     ib number of block
+c     k  number of specific wavefunction in this block
+C
+c---------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+      logical lpr
+      character*1 tp,tl,tis
+      character*2 nucnam
+      character*10 txtfor           
+c
+c
+
+!      common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      
+       common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+       common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+       common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+       common /dimens/ n0f,n0b,nrm,nlm
+       common /gfvsq / sq(0:igfv)
+       common /gfvsqi/ sqi(0:igfv)
+       common /gfvsqh/ sqh(0:igfv)
+       common /gfvshi/ shi(0:igfv)
+       common /gfvwgi/ wgi(0:igfv)
+       common /mathco/ zero,one,two,half,third,pi
+       common /initia/ vin,rin,ain,inin,iplot
+       common /tapes / l6,lin,lou,lwin,lwou,lplo
+       common /wavefg/ fg(nq2x,nb2x)
+
+
+!common /basnnn/ n0f,n0b
+!common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      !common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      !common /bloblo/ nb,ijb(nbx),ilb(nbx),
+     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)      
+      !common /gaussh/ xh(0:ngh),wh(0:ngh),ph(0:ngh)
+     ! common /mathco/ zero,one,two,half,third,pi
+     ! common /initia/ vin,rin,ain,inin,iplot
+      !common /optopt/ icm,icou,it1,it2,ncut
+      !common /tapes / l6,lin,lou,lwin,lwou,lplo
+! ojo      common /eeeeee/ ee(ntx,2),vv(ntx,2),mu(ntx)
+      common /textex/ nucnam,tp(2),tis(2),tl(0:20),txtfor
+cllllll 06/99
+      common /match/ mxpl,stpl
+cllllll 06/99
+claudio 04/2000
+      ibg = ib - 1 + 2*mod(ib,2)
+      nf  = id(ib)
+      ng  = id(ibg)
+claudio 04/2000
+c
+c
+c      if (lpr)
+c     &write(l6,*) ' ****** BEGIN PLOTW ********************************'
+       k1=k-ia(ib)
+c
+c     number of points for the plot
+clll      mxpl = 180
+c      mxpl=1
+c
+c     plot step in (fm)
+clll      stpl = 0.1
+c
+c     plot for wavefunctions:
+c----------------------------
+      open(lplo,file='dirhbs.wplo',status='unknown')
+      ip = 2-mod(ib,2)
+c      write(lplo,)'El negocio es aqui'
+      write(lplo,111)  it,k1,2*ijb(ib)-1,tp(ip),ee(k,it)
+111   format(/,3i3,'/2',a1,f10.3)     
+c         write(lplo,'(/,a,3i3)') ' wavefunction f(r)',it,ib,k
+         if (lpr)  then
+          if (iplot.eq.1 .or. iplot.eq.2)
+     +     write(l6,111) it,k1,2*ijb(ib)-1,tp(ip),ee(k,it)
+claudio 04/2000
+          if (iplot.eq.1) write(l6,'(1x,2i3)') nf,ng
+claudio 04/2000
+         endif
+c         r = zero
+c         s = zero
+c         do ist = 0,mxpl
+c            call rwave(it,ib,k1,r,f,g)
+c           write(lplo,100) r,f,g
+c            write(lplo,100) r,f
+  100       format(f10.3,2f15.6) 
+c           if (lpr) write(l6,100) r,f,g 
+c            if (lpr) write(l6,100) r,f 
+c            s = s + (f*f+g*g)*r*r
+c            r = r + stpl
+c         enddo
+c         write(6,*) ' check norm of f and g',s*stpl
+c         write(l6,*) ' check norm of f and g',s*stpl
+c
+c         write(lplo,'(/,a,3i3)') ' wavefunction g(r)',it,ib,k
+c         if (lpr) then
+c            write(l6,'(/,a,3i3)') ' wavefunction f(r) and g(r)',it,ib,k
+c         endif
+         r = zero
+         s = zero
+         s1 = zero
+         s2 = zero
+         do ist = 0,mxpl
+           call rwave(it,ib,k1,r,f,g,ist)
+           write(lplo,100) r,f,g
+c            write(lplo,100) r,g
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C     Coloquei o comentario abaixo para evitar a impressao das funcoes 
+C     de onda no arquivo dis.out 06/98
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+             if (lpr .and. iplot.eq.2 ) write(l6,100) r,f,g 
+c            if (lpr) write(l6,100) r,g 
+            s = s + (f*f+g*g)*r*r
+            s1 = s1 + f*f*r*r
+            s2 = s2 + g*g*r*r
+            r = r + stpl
+         enddo
+c         write(6,*) ' check norm of f and g',s*stpl
+c         write(l6,*) ' check norm of f and g',s*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de (f*f+g*g)*r*r --> ',s*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de  f*f*r*r      --> ',s1*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de  g*g*r*r      --> ',s2*stpl                           
+      close(lplo)
+c
+c      if (lpr)
+c     &write(l6,*) ' ****** END PLOTW **********************************'
+      return
+C-end-PLOT
+      end
+
+c=====================================================================c
+
+      subroutine plw
+
+c=====================================================================c
+C
+C     plotes the  wafefunctions f(r) and g(r)
+C
+c---------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+cllllll 06/99
+      character*1 tp,tl,tis
+      character*2 nucnam
+      character*10 txtfor
+cllllll 06/99
+c
+c
+       common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+       common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+       common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+       common /dimens/ n0f,n0b,nrm,nlm
+       common /gfvsq / sq(0:igfv)
+       common /gfvsqi/ sqi(0:igfv)
+       common /gfvsqh/ sqh(0:igfv)
+       common /gfvshi/ shi(0:igfv)
+       common /gfvwgi/ wgi(0:igfv)
+       common /mathco/ zero,one,two,half,third,pi
+       common /initia/ vin,rin,ain,inin,iplot
+       common /tapes / l6,lin,lou,lwin,lwou,lplo
+       common /wavefg/ fg(nq2x,nb2x)
+
+
+!common /basnnn/ n0f,n0b
+!common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      !common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      !common /bloblo/ nb,ijb(nbx),ilb(nbx),
+     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)      
+      !common /gaussh/ xh(0:ngh),wh(0:ngh),ph(0:ngh)
+     ! common /mathco/ zero,one,two,half,third,pi
+     ! common /initia/ vin,rin,ain,inin,iplot
+      !common /optopt/ icm,icou,it1,it2,ncut
+      !common /tapes / l6,lin,lou,lwin,lwou,lplo
+! ojo      common /eeeeee/ ee(ntx,2),vv(ntx,2),mu(ntx)
+      common /textex/ nucnam,tp(2),tis(2),tl(0:20),txtfor
+cllllll 06/99
+      common /match/ mxpl,stpl
+cllllll 06/99
+cllllll 06/99
+c     number of points for the plot
+cll      mxpl = 180
+      mxpl = 180
+c
+c     plot step in (fm)
+      stpl = 0.1
+        ii = 0
+cllllll 06/99
+      do it=1,2
+         do ib=1,nb
+            nf  = id(ib)
+            im  = ia(ib)+1
+            ie = im+nf-1
+            do 10 k=im,ie
+c            v1 = vv(i,1)/(2*mu(i))
+c            v2 = vv(i,2)/(2*mu(i))
+c            if (v1.lt.0.0001.and.v2.lt.0.0001) goto 10
+             if (ee(k,it).gt.13.)               goto 10
+             ii = ii + 1
+10          continue
+         enddo
+      enddo
+      if (iplot.eq.1 .or. iplot.eq.2) then
+      write(l6,'(1X,i4,2F6.2,i4,F6.2)') ii,zero,stpl,mxpl+1,mxpl/10.
+      write(l6,*) ' ****** END PLW ************************************'
+      write(l6,'(1X,a2,i3)') nucnam,nama
+      write(l6,'(1X,a,a10)') 'force ',txtfor      
+      write(l6,'(1X,4F8.3)') amsig,amome,amrho,amu      
+      write(l6,'(1X,3F10.3)') gsig,gome,grho
+      write(l6,'(1X,3F10.3)') g2,g3,w3
+      write(l6,'(1X,F7.3)') fr
+      write(l6,'(1X,F7.3)') gprime      
+c      
+      end if
+
+      write(l6,*) ' ****** END PLW ************************************'
+      do it=1,2
+         do ib=1,nb
+            nf  = id(ib)
+            im  = ia(ib)+1
+            ie = im+nf-1
+            do 20 k=im,ie
+c            v1 = vv(i,1)/(2*mu(i))
+c            v2 = vv(i,2)/(2*mu(i))
+c            if (v1.lt.0.0001.and.v2.lt.0.0001) goto 20
+             if (ee(k,it).gt.13.)               goto 20
+             call plotw(it,ib,k,.true.)
+20          continue
+         enddo
+      enddo
+      return
+C-end-PLW
+      end
+c======================================================================c
+
+
+c======================================================================c
+
+      subroutine iter(lpr)
+
+c======================================================================c
+c
+c     main iteration for the spherical Dirac program
+c
+c----------------------------------------------------------------------c!
+      implicit real*8 (a-h,o-z)
+c
+      logical lpr,lprx
+      character*2 nucnam
+      character*14 text3
+      character*27 text1,text2
+c
+      common /erwar / ea,rms
+      common /iterat/ si,siold,epsi,xmix,xmix0,xmax,maxi,ii,inxt,iaut
+      common /initia/ inin,inink
+      common /mathco/ zero,one,two,half,third,pi
+      common /nucnuc/ amas,nmas,nneu,npro,nucnam
+      common /optopt/ itx,icm,icou,ipc,inl,idd
+      common /pair  / del(2),spk(2),spk0(2)
+      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+      common /broyde2/ ibroyd
+
+c
+      text1 = ': Iteration interrupted after '
+      text2 = ': Iteration converged after '
+      text3 = ' steps   si = '
+c
+      write(l6,*) ' ****** BEGIN ITER *********************************'
+
+      ii=0
+      call gamma()
+      call broyden(.false.)
+      
+      do ite = 1,maxi
+         ii = ite
+c
+         if (lpr) then
+            write(l6,102) ii,'.It. si = ',si,'  E/A = ',ea,
+     &                    ' R = ',rms,'  mix =',xmix  
+            if (l6.ne.6) 
+     &      write(6,102)  ii,'.It. si = ',si,'  E/A = ',ea,
+     &                    ' R = ',rms,'  mix =',xmix
+  102        format(i3,a,f12.7,2(a,f9.4),a,f5.2) 
+         endif
+
+c------- loop over neutrons and protons
+C         do it = 1,itx
+c            
+c------- diagonalization of the Dirac-Bogolibov equation	
+C            call dirhb(it,.false.,.false.)
+c     
+c---------- calculation of new densities in oscillator basis
+C            call denssh(it,.false.)
+C         enddo   ! it		
+c
+c------- calculation of new densities in r-space
+C         call densit(.false.)
+c        
+c------- new coupling constants
+C         call gdd(.false.)
+c
+c------- calculation of new fieldsclear
+
+C         call field(.false.)
+c
+c------- calculation of the Coulomb potential
+C         call coulom(.false.)
+c
+c------- calculation of expectation values
+C         call expect(.false.)
+c
+c------- potentials in r-space
+C         call poten(.false.)
+
+c
+c------- potentials in r-space
+C         call gamma()
+c
+c------- pairing field
+         do it = 1,itx
+	    call delta(it,.false.)
+            spk0(it) = spk(it)
+         enddo
+         
+         call broyden(.false.)
+c        
+c------- check for convergence
+         if (ii.gt.2) then
+            ic = itestc()
+            if (ic.eq.1) goto 20
+            if (ic.eq.2) goto 30
+         endif
+c
+      enddo   ! ite
+   20 write(6,100) nucnam,nmas,text1,ii,text3,si
+      if (l6.ne.6) write(l6,100) nucnam,nmas,text1,ii,text2,si
+      goto 40
+c
+   30 write(6,101) nucnam,nmas,text2,ii,text3,si
+      if (l6.ne.6) write(l6,100) nucnam,nmas,text2,ii,text3,si
+c
+  100 format(1x,68(1h*),/,1x,a2,i4,a27,i4,a14,f17.10,/,1x,68(1h*))
+  101 format(a2,i4,a27,i4,a14,f17.10)
+   40 write(l6,*) ' ****** END ITER ***********************************'
+      return
+c-end-ITER
+      end
+
+
+
+      c=====================================================================c
+
+      subroutine plotw(it,ib,k,lpr)
+
+c=====================================================================c
+C
+C     prepares plot of specific wafefunctions f(r) and g(r)
+c     it = 1 for neutrons,  it = 2 for protons
+c     ib number of block
+c     k  number of specific wavefunction in this block
+C
+c---------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+      logical lpr
+      character*1 tp,tl,tis
+      character*2 nucnam
+      character*10 txtfor           
+c
+c
+
+!      common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      
+       common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+       common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+       common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+       common /dimens/ n0f,n0b,nrm,nlm
+       common /gfvsq / sq(0:igfv)
+       common /gfvsqi/ sqi(0:igfv)
+       common /gfvsqh/ sqh(0:igfv)
+       common /gfvshi/ shi(0:igfv)
+       common /gfvwgi/ wgi(0:igfv)
+       common /mathco/ zero,one,two,half,third,pi
+       common /initia/ vin,rin,ain,inin,iplot
+       common /tapes / l6,lin,lou,lwin,lwou,lplo
+       common /wavefg/ fg(nq2x,nb2x)
+
+
+!common /basnnn/ n0f,n0b
+!common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      !common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      !common /bloblo/ nb,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)      
+      !common /gaussh/ xh(0:ngh),wh(0:ngh),ph(0:ngh)
+     ! common /mathco/ zero,one,two,half,third,pi
+     ! common /initia/ vin,rin,ain,inin,iplot
+      !common /optopt/ icm,icou,it1,it2,ncut
+      !common /tapes / l6,lin,lou,lwin,lwou,lplo
+! ojo      common /eeeeee/ ee(ntx,2),vv(ntx,2),mu(ntx)
+      common /textex/ nucnam,tp(2),tis(2),tl(0:20),txtfor
+cllllll 06/99
+      common /match/ mxpl,stpl
+cllllll 06/99
+claudio 04/2000
+      ibg = ib - 1 + 2*mod(ib,2)
+      nf  = id(ib)
+      ng  = id(ibg)
+claudio 04/2000
+c
+c
+c      if (lpr)
+c     &write(l6,*) ' ****** BEGIN PLOTW ********************************'
+       k1=k-ia(ib)
+c
+c     number of points for the plot
+clll      mxpl = 180
+c      mxpl=1
+c
+c     plot step in (fm)
+clll      stpl = 0.1
+c
+c     plot for wavefunctions:
+c----------------------------
+      open(lplo,file='dirhbs.wplo',status='unknown')
+      ip = 2-mod(ib,2)
+c      write(lplo,)'El negocio es aqui'
+      write(lplo,111)  it,k1,2*ijb(ib)-1,tp(ip),ee(k,it)
+111   format(/,3i3,'/2',a1,f10.3)     
+c         write(lplo,'(/,a,3i3)') ' wavefunction f(r)',it,ib,k
+         if (lpr)  then
+          if (iplot.eq.1 .or. iplot.eq.2)
+     +     write(l6,111) it,k1,2*ijb(ib)-1,tp(ip),ee(k,it)
+claudio 04/2000
+          if (iplot.eq.1) write(l6,'(1x,2i3)') nf,ng
+claudio 04/2000
+         endif
+c         r = zero
+c         s = zero
+c         do ist = 0,mxpl
+c            call rwave(it,ib,k1,r,f,g)
+c           write(lplo,100) r,f,g
+c            write(lplo,100) r,f
+  100       format(f10.3,2f15.6) 
+c           if (lpr) write(l6,100) r,f,g 
+c            if (lpr) write(l6,100) r,f 
+c            s = s + (f*f+g*g)*r*r
+c            r = r + stpl
+c         enddo
+c         write(6,*) ' check norm of f and g',s*stpl
+c         write(l6,*) ' check norm of f and g',s*stpl
+c
+c         write(lplo,'(/,a,3i3)') ' wavefunction g(r)',it,ib,k
+c         if (lpr) then
+c            write(l6,'(/,a,3i3)') ' wavefunction f(r) and g(r)',it,ib,k
+c         endif
+         r = zero
+         s = zero
+         s1 = zero
+         s2 = zero
+         do ist = 0,mxpl
+           call rwave(it,ib,k1,r,f,g,ist)
+           write(lplo,100) r,f,g
+c            write(lplo,100) r,g
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C     Coloquei o comentario abaixo para evitar a impressao das funcoes 
+C     de onda no arquivo dis.out 06/98
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+             if (lpr .and. iplot.eq.2 ) write(l6,100) r,f,g 
+c            if (lpr) write(l6,100) r,g 
+            s = s + (f*f+g*g)*r*r
+            s1 = s1 + f*f*r*r
+            s2 = s2 + g*g*r*r
+            r = r + stpl
+         enddo
+c         write(6,*) ' check norm of f and g',s*stpl
+c         write(l6,*) ' check norm of f and g',s*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de (f*f+g*g)*r*r --> ',s*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de  f*f*r*r      --> ',s1*stpl
+         if (lpr .and. iplot.eq.1 ) 
+     +    write(l6,*) ' integral de  g*g*r*r      --> ',s2*stpl                           
+      close(lplo)
+c
+c      if (lpr)
+c     &write(l6,*) ' ****** END PLOTW **********************************'
+      return
+C-end-PLOT
+      end
+
+c=====================================================================c
+
+      subroutine plw
+
+c=====================================================================c
+C
+C     plotes the  wafefunctions f(r) and g(r)
+C
+c---------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+cllllll 06/99
+      character*1 tp,tl,tis
+      character*2 nucnam
+      character*10 txtfor
+cllllll 06/99
+c
+c
+       common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+       common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+       common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+       common /dimens/ n0f,n0b,nrm,nlm
+       common /gfvsq / sq(0:igfv)
+       common /gfvsqi/ sqi(0:igfv)
+       common /gfvsqh/ sqh(0:igfv)
+       common /gfvshi/ shi(0:igfv)
+       common /gfvwgi/ wgi(0:igfv)
+       common /mathco/ zero,one,two,half,third,pi
+       common /initia/ vin,rin,ain,inin,iplot
+       common /tapes / l6,lin,lou,lwin,lwou,lplo
+       common /wavefg/ fg(nq2x,nb2x)
+
+
+!common /basnnn/ n0f,n0b
+!common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      !common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      !common /bloblo/ nb,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)      
+      !common /gaussh/ xh(0:ngh),wh(0:ngh),ph(0:ngh)
+     ! common /mathco/ zero,one,two,half,third,pi
+     ! common /initia/ vin,rin,ain,inin,iplot
+      !common /optopt/ icm,icou,it1,it2,ncut
+      !common /tapes / l6,lin,lou,lwin,lwou,lplo
+! ojo      common /eeeeee/ ee(ntx,2),vv(ntx,2),mu(ntx)
+      common /textex/ nucnam,tp(2),tis(2),tl(0:20),txtfor
+cllllll 06/99
+      common /match/ mxpl,stpl
+cllllll 06/99
+cllllll 06/99
+c     number of points for the plot
+cll      mxpl = 180
+      mxpl = 180
+c
+c     plot step in (fm)
+      stpl = 0.1
+        ii = 0
+cllllll 06/99
+      do it=1,2
+         do ib=1,nb
+            nf  = id(ib)
+            im  = ia(ib)+1
+            ie = im+nf-1
+            do 10 k=im,ie
+c            v1 = vv(i,1)/(2*mu(i))
+c            v2 = vv(i,2)/(2*mu(i))
+c            if (v1.lt.0.0001.and.v2.lt.0.0001) goto 10
+             if (ee(k,it).gt.13.)               goto 10
+             ii = ii + 1
+10          continue
+         enddo
+      enddo
+      if (iplot.eq.1 .or. iplot.eq.2) then
+      write(l6,'(1X,i4,2F6.2,i4,F6.2)') ii,zero,stpl,mxpl+1,mxpl/10.
+      write(l6,*) ' ****** END PLW ************************************'
+      write(l6,'(1X,a2,i3)') nucnam,nama
+      write(l6,'(1X,a,a10)') 'force ',txtfor      
+      write(l6,'(1X,4F8.3)') amsig,amome,amrho,amu      
+      write(l6,'(1X,3F10.3)') gsig,gome,grho
+      write(l6,'(1X,3F10.3)') g2,g3,w3
+      write(l6,'(1X,F7.3)') fr
+      write(l6,'(1X,F7.3)') gprime      
+c      
+      end if
+
+      write(l6,*) ' ****** END PLW ************************************'
+      do it=1,2
+         do ib=1,nb
+            nf  = id(ib)
+            im  = ia(ib)+1
+            ie = im+nf-1
+            do 20 k=im,ie
+c            v1 = vv(i,1)/(2*mu(i))
+c            v2 = vv(i,2)/(2*mu(i))
+c            if (v1.lt.0.0001.and.v2.lt.0.0001) goto 20
+             if (ee(k,it).gt.13.)               goto 20
+             call plotw(it,ib,k,.true.)
+20          continue
+         enddo
+      enddo
+      return
+C-end-PLW
+      end
+c======================================================================c
+
+
+
+c======================================================================c
+
+      subroutine rwave(it,ib,k,r,f,g,imc)
+
+c======================================================================c
+c
+c     calculation of the wavefunctions f(r) and g(r) at point x
+c     x is given in units of the oscillator lenght: x = r/b0f 
+c     it = 1:  neutron,  it = 2: proton
+c     ib is the block charakterized by j,l
+c     k  is the number of the wavefunction within this block
+c
+c----------------------------------------------------------------------c
+      include 'paramet'
+c
+      implicit real*8 (a-h,o-z)
+c
+      dimension rnl(nrx,2)
+C
+
+C      common /basnnn/ n0f,n0b
+C      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+C      common /bloosc/ ia(nbx,2),id(nbx,2)
+C      common /bloqua/ nt,nr(ntx),nl(ntx),nj(ntx),kk(ntx),np(ntx),tt(ntx)
+C      common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+C      common /bosqua/ no
+C      common /gfviv / iv(0:igfv)
+C      common /sdimos/ nrm,nlm,nrbm
+C      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+C      common /textex/ tp(2),tis(2),tit(2),tl(0:30)
+C      common /vvvikf/ mv,ipos(nbx),nib(mvx),nni(2,mvx)
+
+
+
+
+
+
+!      common /baspar/ hom,hb0,b0f,b0b,b0c,cf,cb
+      
+      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      common /bloqub/ ijb(nbx),ilb(nbx,2),ipb(nbx),ikb(nbx)
+      common /bloosc/ ia(nbx,2),id(nbx,2)
+!     common /bloblo/ ,ijb(nbx),ilb(nbx),
+!     &                id(nbx),idq(nbx),ia(nbx),iaq(nbx)
+      common /dimens/ n0f,n0b,nrm,nlm
+      common /gfvsq / sq(0:igfv)
+      common /gfvsqi/ sqi(0:igfv)
+      common /gfvsqh/ sqh(0:igfv)
+      common /gfvshi/ shi(0:igfv)
+      common /gfvwgi/ wgi(0:igfv)
+      common /mathco/ zero,one,two,half,third,pi
+      common /initia/ vin,rin,ain,inin,iplot
+      common /tapes / l6,lin,lou,lwin,lwou,lplo
+      common /wavefg/ fg(nq2x,nb2x)
+c
+      if (r.eq.zero) r = 0.0000001
+      ibg = ib - 1 + 2*mod(ib,2)
+      nf  = id(ib)
+      ng  = id(ibg)
+      nd  = nf + ng
+      mf  = ib + (it-1)*nbx
+      lf  = ilb(ib)
+      lg  = ilb(ibg)
+C---------------------      
+      k1  = k
+C---------------------      
+c
+      x  = r/b0f
+      xx = x*x
+      f  = b0f**(-1.5d0)
+      rnl(1,1) = sq(2)*f*wgi(lf+1)*x**lf*exp(-half*xx)
+      rnl(2,1) = rnl(1,1)*(lf+1.5d0-xx)*shi(lf+1)
+      rnl(1,2) = sq(2)*f*wgi(lg+1)*x**lg*exp(-half*xx)
+      rnl(2,2) = rnl(1,2)*(lg+1.5d0-xx)*shi(lg+1)
+      do n = 3,nrm
+         rnl(n,1)  = ((2*n+lf-2.5d0-xx)*rnl(n-1,1) -
+     &           sq(n-2)*sqh(n-2+lf)*rnl(n-2,1))*sqi(n-1)*shi(n-1+lf)
+         rnl(n,2)  = ((2*n+lg-2.5d0-xx)*rnl(n-1,2) -
+     &           sq(n-2)*sqh(n-2+lg)*rnl(n-2,2))*sqi(n-1)*shi(n-1+lg)
+      enddo
+c
+      sf = zero
+      sg = zero
+C------------------      
+      snf = zero
+      sng = zero
+C------------------
+      if (imc.eq.0 .and. iplot.eq.1) then 
+      write(l6,*) ' Coeficientes de f(r)'           
+      end if
+      do n = 1,nf
+         sf = sf + fg(n+(k-1)*nd,mf)*rnl(n,1)
+C------------------         
+         snf = snf + fg(n+(k-1)*nd,mf)*fg(n+(k-1)*nd,mf)
+         if (imc.eq.0 .and. iplot.eq.1) then 
+         write(l6,'(f15.6)') fg(n+(k-1)*nd,mf)
+         end if
+C------------------                
+      enddo
+      if (imc.eq.0 .and. iplot.eq.1) then       
+      write(l6,*) ' Coeficientes de g(r)'      
+      end if
+      do n = 1,ng
+         sg = sg + fg(nf+n+(k-1)*nd,mf)*rnl(n,2)
+C------------------         
+cll         sng = sng + fg(nf+n+(k-1)*nd,mf)*rnl(n,2)
+         sng = sng + fg(nf+n+(k-1)*nd,mf)*fg(nf+n+(k-1)*nd,mf)
+         if (imc.eq.0 .and. iplot.eq.1) then 
+         write(l6,'(f15.6)') fg(nf+n+(k-1)*nd,mf)
+         end if
+C------------------                        
+      enddo
+      f = sf
+      g = sg
+C------------------
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C     Coloquei o comentario abaixo para evitar a impressao das normas 
+C     \int f^2 + g^2 na tela 06/98
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+c      write(*,*) 'isospin,n_r,j,norm',it,k1,2*ijb(ib)-1,snf+sng
+         if (imc.eq.0 .and. iplot.eq.1) then 
+      write(l6,*) 'Sum f,Sum g',snf,sng
+         end if
+C------------------     
+c
+      return
+c-end-RWAVE
+      end
+
+
+
+
+      

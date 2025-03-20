@@ -1,0 +1,575 @@
+c======================================================================c
+
+      subroutine iter(lpr)
+
+c======================================================================c
+c
+c     main iteration for the spherical Dirac program
+c
+c----------------------------------------------------------------------c!
+      implicit real*8 (a-h,o-z)
+c
+      logical lpr,lprx
+      character*2 nucnam
+      character*14 text3
+      character*27 text1,text2
+c
+      common /erwar / ea,rms
+      common /iterat/ si,siold,epsi,xmix,xmix0,xmax,maxi,ii,inxt,iaut
+      common /initia/ inin,inink
+      common /mathco/ zero,one,two,half,third,pi
+      common /nucnuc/ amas,nmas,nneu,npro,nucnam
+      common /optopt/ itx,icm,icou,ipc,inl,idd
+      common /pair  / del(2),spk(2),spk0(2)
+      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+      common /broyde2/ ibroyd
+
+c
+      text1 = ': Iteration interrupted after '
+      text2 = ': Iteration converged after '
+      text3 = ' steps   si = '
+c
+      write(l6,*) ' ****** BEGIN ITER *********************************'
+
+      ii=0
+      call gamma()
+      call broyden(.false.)
+      
+      do ite = 1,maxi
+         ii = ite
+c
+         if (lpr) then
+            write(l6,102) ii,'.It. si = ',si,'  E/A = ',ea,
+     &                    ' R = ',rms,'  mix =',xmix  
+            if (l6.ne.6) 
+     &      write(6,102)  ii,'.It. si = ',si,'  E/A = ',ea,
+     &                    ' R = ',rms,'  mix =',xmix
+  102        format(i3,a,f12.7,2(a,f9.4),a,f5.2) 
+         endif
+
+c------- loop over neutrons and protons
+         do it = 1,itx
+c            
+c------- diagonalization of the Dirac-Bogolibov equation	
+            call dirhb(it,.false.,.false.)
+c     
+c---------- calculation of new densities in oscillator basis
+            call denssh(it,.false.)
+         enddo   ! it		
+c
+c------- calculation of new densities in r-space
+C         call densit(.false.)
+c        
+c------- new coupling constants
+C         call gdd(.false.)
+c
+c------- calculation of new fieldsclear
+
+C         call field(.false.)
+c
+c------- calculation of the Coulomb potential
+C         call coulom(.false.)
+c
+c------- calculation of expectation values
+C         call expect(.false.)
+c
+c------- potentials in r-space
+C         call poten(.false.)
+
+c
+c------- potentials in r-space
+C         call gamma()
+c
+c------- pairing field
+         do it = 1,itx
+	    call delta(it,.false.)
+            spk0(it) = spk(it)
+         enddo
+         
+         call broyden(.false.)
+c        
+c------- check for convergence
+         if (ii.gt.2) then
+            ic = itestc()
+            if (ic.eq.1) goto 20
+            if (ic.eq.2) goto 30
+         endif
+c
+      enddo   ! ite
+   20 write(6,100) nucnam,nmas,text1,ii,text3,si
+      if (l6.ne.6) write(l6,100) nucnam,nmas,text1,ii,text2,si
+      goto 40
+c
+   30 write(6,101) nucnam,nmas,text2,ii,text3,si
+      if (l6.ne.6) write(l6,100) nucnam,nmas,text2,ii,text3,si
+c
+  100 format(1x,68(1h*),/,1x,a2,i4,a27,i4,a14,f17.10,/,1x,68(1h*))
+  101 format(a2,i4,a27,i4,a14,f17.10)
+   40 write(l6,*) ' ****** END ITER ***********************************'
+      return
+c-end-ITER
+      end
+
+c======================================================================c
+
+      subroutine dirhb(it,lprh,lprl)
+
+c======================================================================c
+c
+c     solves the Dirac-HFB-Equation in spherical oscillator basis
+c     IT  = 1 neutrons
+c           2 protons
+c 
+c     units:    fields and Hamiltonian in MeV
+c               eigenvalues in MeV
+c 
+c----------------------------------------------------------------------c
+      implicit real*8 (a-h,o-z)
+c
+      include 'dirhb.par'
+c
+      logical lprh,lprl
+c
+      character*1 bbb
+      character*8 tbb(nhbx)
+      character tp*1,tis*1,tit*8,tl*1                           ! textex
+      character tk*8                                            ! blolev
+      character tb*5                                            ! blokap
+      character tt*8                                            ! bloqua
+      character nucnam*2                                        ! nucnuc
+c
+      dimension hb(nhbqx),e(nhbx),ez(nhbx)
+c
+      common /blodir/ ka(nbx,4),kd(nbx,4)
+      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      common /blolev/ nk(4),ibk(nkx,4),tk(nkx,4)
+      common /bloosc/ ia(nbx,2),id(nbx,2)
+      common /bloqua/ nt,nr(ntx),nl(ntx),nj(ntx),kk(ntx),np(ntx),tt(ntx)
+      common /deldel/ de(nhhx,nb2x)
+      common /fermi / ala(2),tz(2)
+      common /gamgam/ hh(nhhx,nb2x)
+      common /iterat/ si,siold,epsi,xmix,xmix0,xmax,maxi,ii,inxt,iaut
+      common /mathco/ zero,one,two,half,third,pi
+      common /optopt/ itx,icm,icou,ipc,inl,idd
+      common /nucnuc/ amas,nmas,npr(2),nucnam
+      common /physco/ hqc,alphi,r0
+      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+      common /textex/ tp(2),tis(2),tit(2),tl(0:30)
+      common /waveuv/ fguv(nhbx,nkx,4),equ(nkx,4)
+c
+c
+      data maxl/200/,epsl/1.d-8/,bbb/'-' /
+c
+      if (lprh.or.lprl)
+     &write(l6,*) ' ****** BEGIN DIRHB **************************'
+
+c======================================================================c
+c     with pairing: Dirac-Bogoliubov equation
+c======================================================================c
+c------- loop over the different j-blocks
+      dl    = 100.d0
+      xh    = ala(it) + dl
+      xl    = ala(it) - dl
+      al    = ala(it)  
+      sn    = zero
+      do lit=1,maxl
+         snold=sn
+         sn=zero
+         alx=al
+         klp=0
+         kla=0
+         do ib = 1,nb
+	    kap  = kb(ib)
+	    j    = iabs(kap)
+	    mul  = mb(ib)
+	    lf   = lfkap(kap)
+	    lg   = lgkap(kap)
+            nf   = id(ib,1)
+            ng   = id(ib,2)
+            nh   = nf + ng
+            nhb = nh + nh
+            m    = ib + (it-1)*nbx
+c
+c---------- calculation of the Dirac-HFB-Matrix:
+            do i2 = 1,nh
+               do i1 = i2,nh
+                  hla = hh(i1+(i2-1)*nh,m) 
+                  dla = de(i1+(i2-1)*nh,m)
+                  hb(i1+(i2-1)*nhb)       =  hla 
+                  hb(nh+i1+(nh+i2-1)*nhb) = -hla
+                  hb(nh+i1+(i2-1)*nhb)    =  dla
+                  hb(nh+i2+(i1-1)*nhb)    =  dla
+               enddo
+               hb(i2+(i2-1)*nhb)       = hb(i2+(i2-1)*nhb) - al
+               hb(nh+i2+(nh+i2-1)*nhb) = hb(nh+i2+(nh+i2-1)*nhb)+al
+            enddo
+c---------- Diagonalization:
+            if (lprh) then
+	       i0f = ia(ib,1)  
+               do i = 1,nh
+                  tbb(i)    = tt(i0f+i)
+               enddo
+               do i = 1,nh
+                  tbb(nh+i) = tbb(i)
+               enddo
+               write(l6,'(/,a)') tb(ib)
+            endif
+            call sdiag(nhb,nhb,hb,e,hb,ez,+1)
+c---------- store eigenvalues and wave functions
+c---------- particles
+	    ka(ib,it) = klp
+            do k = 1,nf
+	       klp = klp + 1
+	       ibk(klp,it) = ib
+               write(tk(klp,it),100) k,tl(lf),j+j-1
+  100       format(i2,a1,i2,2h/2)
+               equ(klp,it) = e(nh+k)
+               do i = 1,nhb
+                  fguv(i,klp,it) = hb(i+(nh+k-1)*nhb)
+               enddo
+               v2 = zero
+               do i = 1,nh
+                  v2 = v2 + fguv(nh+i,klp,it)**2
+               enddo
+               sn=sn+v2*mul
+            enddo
+	    kd(ib,it) = klp - ka(ib,it)
+c
+c---------- antiparticles
+	    ka(ib,it+2) = kla
+            do k = 1,ng
+	       kla = kla + 1
+	       ibk(kla,it+2) = ib
+            write(tk(kla,it+2),100) kla-ka(ib,it+1),tl(lg),j+j-1
+               equ(kla,it+2) = e(ng-k+1) 
+               do i = 1,nhb
+                  fguv(i,kla,it+2) = hb(i+(ng-k)*nhb)
+               enddo
+               v2 = zero
+               do i = 1,nh
+                  v2 = v2 + fguv(nh+i,kla,it+2)**2
+               enddo
+               sn = sn + v2*mul 
+            enddo
+	    kd(ib,it+2) = kla - ka(ib,it+2)
+c
+      enddo   ! ib
+      if (lit.gt.1) dd = (sn - snold)/(al - alold)
+c------- calculation of a new lambda-value
+      alold = al
+      dn    = sn - tz(it)
+      if (dn.lt.zero) then
+          xl = al
+      else
+          xh = al
+      endif
+      if (lit.eq.1) then
+         if(dabs(dn).le.0.1d0) then
+            al = al - dn
+         else
+             al = al - 0.1d0*sign(one,dn)
+         endif
+      else
+c           secant method
+         if (dd.eq.zero) dd = 1.d-20
+         al    = al - dn/dd
+         if (al.lt.xl.or.al.gt.xh) then
+c              bisection
+            al = half*(xl+xh)
+            bbb = 'B'
+         endif
+      endif
+      if (abs(al-alold).lt.epsl) goto 30
+c
+      if (lprl.or.lit.gt.10) then
+          write(l6,113) lit,'. L-Iteration: ',bbb,alold,dn,al
+          write(6,113)  lit,'. L-Iteration: ',bbb,alold,dn,al
+  113     format(i4,a,a1,3f13.8)
+          bbb = ' '
+      endif
+c           
+c---- end of lambda-loop
+      enddo
+      write(l6,'(a,i4,a)')
+     &     ' Lambda-Iteration interupted after',lit-1,' steps'
+      stop
+   30 if (lprl) then
+         write(l6,101) lit,'. Lambda-Iteration successful:',it,al,dn,sn
+c        write(6,101) lit,'. Lambda-Iteration successful:',it,al,dn,sn
+  101    format(i4,a,i4,3f13.8)
+      endif
+      ala(it) = al
+      nk(it)   = klp
+      nk(it+2) = kla
+      
+      if (lprh.or.lprl)
+     &write(l6,*) ' ****** END DIRHB *********************************'
+      return
+C-end-DIRHB
+      end
+
+
+c======================================================================c
+
+      subroutine denssh(it,lpr)
+
+c======================================================================c
+c
+c     calculates densities in oscillator basis 
+c
+c----------------------------------------------------------------------c
+      implicit real*8 (a-h,o-z)
+c
+      include 'dirhb.par'
+c
+      logical lpr
+c
+      character tb*5                                            ! blokap
+      character tp*1,tis*1,tit*8,tl*1                           ! textex
+      character tt*8                                            ! bloqua
+c
+      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      common /blodir/ ka(nbx,4),kd(nbx,4)
+      common /bloosc/ ia(nbx,2),id(nbx,2)
+      common /bloqua/ nt,nr(ntx),nl(ntx),nj(ntx),kk(ntx),np(ntx),
+     &                tt(ntx)
+      common /mathco/ zero,one,two,half,third,pi
+      common /optopt/ itx,icm,icou,ipc,inl,idd
+      common /pair  / del(2),spk(2),spk0(2)
+      common /rhoshe/ rosh(nhhx,nb2x),aka(mvx,2)
+      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+      common /textex/ tp(2),tis(2),tit(2),tl(0:30)
+      common /waveuv/ fguv(nhbx,nkx,4),equ(nkx,4)
+c
+      if (lpr)
+     &write(l6,*) ' ****** BEGIN DENSSH *******************************'
+c
+c
+c---- loop over the j-blocks
+      sp = zero
+      il = 0
+      do ib = 1,nb
+         kap = kb(ib)
+	 nf  = id(ib,1)
+	 ng  = id(ib,2)
+	 nh  = nf + ng  
+	 k1  = ka(ib,it) + 1
+	 ke  = ka(ib,it) + kd(ib,it)
+         k1a = ka(ib,it+2) + 1
+         kea = ka(ib,it+2) + kd(ib,it+2)
+	 mul = 2*iabs(kap)
+	 m   = ib + (it-1)*nbx
+         if (lpr) write(l6,'(/,a,1x,a)') tb(ib),tis(it)
+c
+c------- contributions of large components f*f to rho
+         do n2 =  1,nh
+         do n1 = n2,nh
+            sr = zero
+            do k = k1,ke
+               sr = sr + fguv(nh+n1,k,it)*fguv(nh+n2,k,it)
+            enddo
+            do k = k1a,kea
+               sr = sr + fguv(nh+n1,k,it+2)*fguv(nh+n2,k,it+2)
+            enddo
+	    sr = sr*mul
+            rosh(n1+(n2-1)*nh,m) = sr
+            rosh(n2+(n1-1)*nh,m) = sr    
+c
+         enddo   ! n1
+         enddo   ! n2
+c
+c------- contributions of large components f*f to kappa 
+	 i0 = il
+         do n2 =  1,nf
+         do n1 = n2,nf
+            i12 = (2 - n2/n1)
+            il  = il + 1
+            sk = zero
+            do k = k1,ke
+               sk = sk + fguv(nh+n1,k,it)*fguv(n2,k,it)
+            enddo
+            do k = k1a,kea
+               sk = sk + fguv(nh+n1,k,it+2)*fguv(n2,k,it+2)
+            enddo
+            sk = mul*sk
+            aka(il,it) =  i12*sk
+	    if (n1.eq.n2) sp = sp + aka(il,it)
+         enddo   ! n1
+         enddo   ! n2
+
+      enddo  ! ib     
+      spk(it) = half*sp
+
+      if (lpr)
+     &write(l6,*) ' ****** END DENSSH *********************************'
+      return
+c-end-DENSSH
+      end
+
+
+C=====================================================================c
+
+      subroutine densit(lpr)
+
+c=====================================================================c
+C
+C     density at the radius r = xh(ih)*b0 is given by
+C     b0**(-3) * rv(ih) / ( 4*pi * r**2 * wh) in units of fm**(-3)
+C
+c---------------------------------------------------------------------c
+      implicit real*8 (a-h,o-z)
+c
+      include 'dirhb.par'
+c
+      logical lpr
+c
+      character tb*5                                            ! blokap
+      character tp*1,tis*1,tit*8,tl*1                           ! textex
+      character nucnam*2                                        ! nucnuc
+c
+      dimension lfg(2),rsfg(2)
+      dimension drs(0:ngh,2),drv(0:ngh,2)
+c
+      common /baspar/ hom,hb0,b0
+      common /blodir/ ka(nbx,4),kd(nbx,4)
+      common /blokap/ nb,kb(nbx),nrbl(nbx,4),mb(nbx),tb(nbx)
+      common /bloosc/ ia(nbx,2),id(nbx,2)
+      common /coulmb/ cou(0:ngh),drvp(0:ngh)
+      common /dens  / ro(0:ngh,4),dro(0:ngh,4)
+      common /gaucor/ wdcor(0:ngh)
+      common /gaussh/ xh(0:ngh),wh(0:ngh),ph(0:ngh),rb(0:ngh)
+      common /gfviv / iv(0:igfv)
+      common /mathco/ zero,one,two,half,third,pi
+      common /nucnuc/ amas,nama,npr(2),nucnam
+      common /optopt/ itx,icm,icou,ipc,inl,idd
+      common /radosc/ rnl(1:nrx,0:nlx,0:ngh),rnl1(1:nrx,0:nlx,0:ngh)
+      common /rhoshe/ rosh(nhhx,nb2x),aka(mvx,2)
+      common /rhorho/ rs(0:ngh,2),rv(0:ngh,2)
+      common /tapes / l6,lin,lou,lwin,lwou,lplo,laka,lvpp
+      common /textex/ tp(2),tis(2),tit(2),tl(0:30)
+c
+      data eps/1.d-7/
+c
+      if (lpr)
+     &write(l6,*) ' ****** BEGIN DENSIT *******************************'
+c
+      do it = 1,itx
+         do ih = 0,ngh
+            rs(ih,it)  = zero
+            rv(ih,it)  = zero
+            drs(ih,it) = zero
+            drv(ih,it) = zero
+         enddo
+      enddo
+c
+c     loop over j-blocks
+      il = 0
+      do ib = 1,nb
+         kappa = kb(ib)
+	     nf = id(ib,1)
+	     ng = id(ib,2)
+	     nh = nf + ng
+c---- loop over contributions from large and small components
+         do ifg = 1,2
+	        n0  = (ifg-1)*nf
+	        nd  = id(ib,ifg)
+	        i0  = ia(ib,ifg)
+	        ivv = iv(ifg)
+c
+c---------- loop over oscillator basis sttes n2 and n1
+            do n2 =  1,nd
+            do n1 = n2,nd
+               i12 = 2 - n2/n1
+               do it = 1,itx
+                  rsfg(it) = i12*rosh(n0+n1+(n0+n2-1)*nh,ib+(it-1)*nbx)
+               enddo   
+c
+	           l  = lfgkap(kappa,ifg)
+               ll = l*(l+1)
+               nn = 2*(n1+n2+l)-1
+c
+c------------- loop over the meshpoints
+               do ih = 0,ngh
+                  s  = rnl(n1,l,ih)*rnl(n2,l,ih)
+                  s1 = rnl1(n1,l,ih)*rnl1(n2,l,ih)
+                  xx = xh(ih)*xh(ih)
+		          ds = 2*(s*(xx+ll/xx-nn)+s1)
+                  do it = 1,itx
+		             fgr  = rsfg(it)*s
+		             fgd  = rsfg(it)*ds
+                     rs(ih,it)  = rs(ih,it)  - ivv*fgr
+                     rv(ih,it)  = rv(ih,it)  + fgr                   
+c                    Delta-rho 
+                     drv(ih,it) = drv(ih,it) + fgd 
+                     drs(ih,it) = drs(ih,it) - ivv*fgd 
+                  enddo   ! it
+               enddo   ! ih
+   10       enddo   ! n1
+            enddo   ! n2
+         enddo   !   ifg  (large and small components)
+      enddo   ! ib (loop over the blocks)
+      
+c---- check, whether integral over drv vanishes
+      s = zero
+      do it = 1,itx
+         do ih = 1,ngh
+            s = s + drv(ih,it)
+         enddo
+         if (lpr) write(l6,*) 'integral over dro',it,s
+      enddo
+c
+c
+c---- normalization and renormalization to particle number
+      do it = 1,itx
+         s  = zero
+         sp = zero
+         do ih = 1,ngh
+            s  = s  + rv(ih,it)
+         enddo
+         if (lpr) then
+	    write(6,100) ' norm of the vector density = ',it,s
+         endif
+         do ih = 0,ngh
+            f           = one/wdcor(ih)
+            rs(ih,it)   = f*rs(ih,it)
+            rv(ih,it)   = f*rv(ih,it)
+            drs(ih,it)  = f*drs(ih,it)/b0**2
+            drv(ih,it)  = f*drv(ih,it)/b0**2
+         enddo
+
+      enddo   ! it
+      if (itx.eq.1) then
+         do ih = 0,ngh
+            ro(ih,1)  = 2 * rs(ih,1)
+            ro(ih,2)  = 2 * rv(ih,1)
+            ro(ih,3)  = zero
+            ro(ih,4)  = zero
+	        dro(ih,1) = 2 * drs(ih,1) 
+	        dro(ih,2) = 2 * drv(ih,1)
+            dro(ih,3) = zero
+            dro(ih,4) = zero 
+	        drvp(ih)  = zero  
+         enddo
+      elseif (itx.eq.2) then
+         do ih = 0,ngh
+            ro(ih,1)  = + rs(ih,1) + rs(ih,2)
+            ro(ih,2)  = + rv(ih,1) + rv(ih,2)
+            ro(ih,3)  = - rs(ih,1) + rs(ih,2)
+            ro(ih,4)  = - rv(ih,1) + rv(ih,2)
+   	        dro(ih,1) = drs(ih,1) + drs(ih,2)
+	        dro(ih,2) = drv(ih,1) + drv(ih,2)
+            dro(ih,3) = - drs(ih,1) + drs(ih,2)
+            dro(ih,4) = - drv(ih,1) + drv(ih,2)
+	        drvp(ih)  = drv(ih,2)
+         enddo
+      else
+	     stop 'in DENSIT: itx not properly defined'
+      endif
+
+  100 format(a,i3,2f15.8) 
+c
+      if (lpr)
+     &write(l6,*) ' ****** END DENSIT *********************************'
+      return
+C-end-DENSIT
+      end

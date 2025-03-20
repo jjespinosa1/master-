@@ -1,0 +1,12 @@
+l6       =   10                     ! output file
+n0f      =   20   20                ! number of oscillator shells
+b0       =  -2.400                  ! oscillator parameter (fm**-1) of basis
+maxi     =  800                     ! maximal number of iterations
+xmix     =  0.1                     ! mixing parameter
+inin     =    0                     ! initialization of wavefunctions
+GE 76                              ! nucleus under consideration
+Delta    = 0.500000 0.500000        ! Gapparameter for neutrons and protons
+GA       = 1.1000    1.1000         ! Pairing-Constants GG = GA/A
+temp     =  0.000                   ! Temperature                          
+iplot    =  2                       ! 0: no plot,1: osc. coef.,2:coord. space
+
